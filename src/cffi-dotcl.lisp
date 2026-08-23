@@ -177,11 +177,13 @@ built at call time so the long size is resolved on the running OS."
         (t `',(%cffi->dotcl-type rettype))))
 
 ;;; Parse interleaved (type val type val ... rettype) into (types vals rettype).
+;;; A varargs marker goes into the type list and takes no value of its own.
 (defun %parse-funcall-args (args)
   (let (types fargs (return-type :void))
     (loop while args
           do (let ((type (pop args)))
-               (cond ((eq type '&optional) nil)  ; varargs marker, skip
+               (cond ((or (eq type '&optional) (eq type :varargs))
+                      (push :varargs types))
                      ((not args) (setq return-type type))
                      (t (push type types)
                         (push (pop args) fargs)))))
@@ -214,13 +216,15 @@ built at call time so the long size is resolved on the running OS."
       (%parse-funcall-args args)
     `(dotnet:%ffi-call-ptr ,ptr ,(%emit-dtypes types) ,(%emit-dret rettype) ,@fargs)))
 
+;;; :VARARGS at the boundary is what tells dotcl to pass the rest the way the
+;;; platform's variadic ABI wants.  CFFI has already promoted their types.
 (defmacro %foreign-funcall-varargs (name fixed-args varargs &rest keys &key convention library)
   (declare (ignore convention library))
-  `(%foreign-funcall ,name ,(append fixed-args varargs) ,@keys))
+  `(%foreign-funcall ,name ,(append fixed-args '(:varargs) varargs) ,@keys))
 
 (defmacro %foreign-funcall-pointer-varargs (ptr fixed-args varargs &rest keys &key convention)
   (declare (ignore convention))
-  `(%foreign-funcall-pointer ,ptr ,(append fixed-args varargs) ,@keys))
+  `(%foreign-funcall-pointer ,ptr ,(append fixed-args '(:varargs) varargs) ,@keys))
 
 ;;;# Callbacks
 ;;;
