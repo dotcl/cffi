@@ -82,7 +82,7 @@ RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
 
 (defmacro with-pointer-to-vector-data ((ptr-var vector) &body body)
   "Bind PTR-VAR to a pointer to VECTOR's data (copy-in/copy-out)."
-  (let ((vec (gensym "VEC")) (n (gensym "N")) (mem (gensym "MEM")))
+  (let ((vec (gensym "VEC")) (n (gensym "N")) (mem (gensym "MEM")) (result (gensym "RESULT")))
     `(let* ((,vec ,vector)
             (,n (length ,vec))
             (,mem (dotnet:alloc-mem ,n)))
@@ -90,10 +90,15 @@ RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
             (progn
               (dotimes (i ,n)
                 (dotnet:mem-write (aref ,vec i) :unsigned-char ,mem i))
-              (let ((,ptr-var ,mem))
-                ,@body)
-              (dotimes (i ,n)
-                (setf (aref ,vec i) (dotnet:mem-read :unsigned-char ,mem i))))
+              ;; The body's values are the macro's, so they have to outlive the
+              ;; copy-out below -- returning that DOTIMES instead handed every
+              ;; caller NIL.
+              (let ((,result (multiple-value-list
+                              (let ((,ptr-var ,mem))
+                                ,@body))))
+                (dotimes (i ,n)
+                  (setf (aref ,vec i) (dotnet:mem-read :unsigned-char ,mem i)))
+                (values-list ,result)))
          (dotnet:free-mem ,mem)))))
 
 ;;;# Memory dereferencing
