@@ -181,6 +181,14 @@ built at call time so the long size is resolved on the running OS."
         ((%long-type-p rettype) (%cffi->dotcl-type-form rettype))
         (t `',(%cffi->dotcl-type rettype))))
 
+(defun %maybe-void (rettype call-form)
+  "A :VOID foreign call returns no values, not one NIL. DOTNET:%FFI-CALL-PTR
+answers NIL when there is nothing to return, which is one value -- so a
+MULTIPLE-VALUE-LIST of a void DEFCFUN came back (NIL) instead of ()."
+  (if (eq rettype :void)
+      `(progn ,call-form (values))
+      call-form))
+
 ;;; Parse interleaved (type val type val ... rettype) into (types vals rettype).
 ;;; A varargs marker goes into the type list and takes no value of its own.
 (defun %parse-funcall-args (args)
@@ -212,14 +220,19 @@ built at call time so the long size is resolved on the running OS."
       `(let ((,ptr-var (%find-ffi-fn ,name)))
          (unless ,ptr-var
            (error "dotcl/cffi: foreign function ~S not found in any loaded library" ,name))
-         (dotnet:%ffi-call-ptr ,ptr-var ,(%emit-dtypes types) ,(%emit-dret rettype) ,@fargs)))))
+         ,(%maybe-void
+           rettype
+           `(dotnet:%ffi-call-ptr ,ptr-var ,(%emit-dtypes types)
+                                  ,(%emit-dret rettype) ,@fargs))))))
 
 (defmacro %foreign-funcall-pointer (ptr args &key convention)
   "Call a foreign function via a pointer."
   (declare (ignore convention))
   (multiple-value-bind (types fargs rettype)
       (%parse-funcall-args args)
-    `(dotnet:%ffi-call-ptr ,ptr ,(%emit-dtypes types) ,(%emit-dret rettype) ,@fargs)))
+    (%maybe-void
+     rettype
+     `(dotnet:%ffi-call-ptr ,ptr ,(%emit-dtypes types) ,(%emit-dret rettype) ,@fargs))))
 
 ;;; :VARARGS at the boundary is what tells dotcl to pass the rest the way the
 ;;; platform's variadic ABI wants.  CFFI has already promoted their types.
