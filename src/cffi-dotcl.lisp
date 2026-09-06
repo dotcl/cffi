@@ -257,10 +257,18 @@ built at call time so the long size is resolved on the running OS."
 ;;;# Loading and closing foreign libraries
 
 ;;; Returns an integer handle (IntPtr value) for the loaded library.
+;;;
+;;; A failure has to be a SIMPLE-ERROR. LOAD-FOREIGN-LIBRARY-PATH calls this
+;;; first with the name as given, and only a SIMPLE-ERROR makes it retry against
+;;; *FOREIGN-LIBRARY-DIRECTORIES*; REPORT-SIMPLE-ERROR then turns one into
+;;; LOAD-FOREIGN-LIBRARY-ERROR. dotcl surfaces a missing DLL as a PROGRAM-ERROR
+;;; from the CLR, which is neither, so the search never ran and the CLR error
+;;; reached the caller instead of CFFI's condition.
 (defun %load-foreign-library (name path)
   (declare (ignore name))
   (let ((path-str (if (stringp path) path (namestring path))))
-    (dotnet:load-library path-str)))
+    (handler-case (dotnet:load-library path-str)
+      (error (e) (error "~A" e)))))
 
 (defun %close-foreign-library (handle)
   (dotnet:free-library handle))
