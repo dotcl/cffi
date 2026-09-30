@@ -533,7 +533,8 @@ library type if type is not specified."
   #+lucid (lcl:environment-variable (string var))
   #+(or mcl ccl) (ccl::getenv var)
   #+sbcl (sb-ext:posix-getenv var)
-  #-(or allegro clisp cmucl ecl scl gcl lispworks lucid mcl ccl sbcl)
+  #+dotcl (dotcl:getenv (string var))
+  #-(or allegro clisp cmucl ecl scl gcl lispworks lucid mcl ccl sbcl dotcl)
   (error 'not-implemented :proc (list 'getenv var)))
 
 ;; Taken from UFFI's src/os.lisp
