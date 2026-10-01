@@ -79,6 +79,19 @@
          ',(canonicalize-foreign-type return-type)))
    t))
 
+;;; Each slot of the libffi argument vector holds the address of an argument's
+;;; value.  A translator that binds the value itself instead (a :BOOL argument
+;;; does) leaves a small number there, and ffi_call reads memory at that
+;;; number.  SBCL turns the resulting memory fault into a Lisp error; on dotcl
+;;; it ends the process, so refuse the call before it is made.
+#+dotcl
+(defun check-libffi-argument-address (address index function types)
+  (unless (and (integerp address) (>= address 4096))
+    (libffi-error function
+                  "Argument ~D (type ~S) of foreign function ~S reached libffi as ~S ~
+                   instead of the address of its value; the call was not made."
+                  index (nth index types) function address)))
+
 (defun foreign-funcall-form/fsbv-with-libffi (function function-arguments symbols types
                                               return-type argument-types
                                               &optional pointerp (abi :default-abi))
@@ -98,7 +111,8 @@
             (loop
               :for arg :in (list ,@symbols)
               :for count :from 0
-              :do (setf (mem-aref argument-values :pointer count) arg))
+              :do #+dotcl (check-libffi-argument-address arg count ,function ',types)
+                  (setf (mem-aref argument-values :pointer count) arg))
             (let* ((libffi-cif-cache (load-time-value (cons 'libffi-cif-cache nil)))
                    (libffi-cif (or (cdr libffi-cif-cache)
                                    ;; TODO use compare-and-swap to set it, and call
