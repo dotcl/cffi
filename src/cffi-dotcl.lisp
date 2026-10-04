@@ -105,24 +105,6 @@ RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
 
 ;;;# Memory dereferencing
 
-(defun %mem-ref (ptr type &optional (offset 0))
-  (dotnet:mem-read type ptr offset))
-
-(defun %mem-set (value ptr type &optional (offset 0))
-  (dotnet:mem-write value type ptr offset)
-  value)
-
-;;;# Foreign type sizes and alignment
-
-;;; cffi type → bytes (Windows x64)
-(defun %foreign-type-size (type-keyword)
-  (dotnet:type-size type-keyword))
-
-(defun %foreign-type-alignment (type-keyword)
-  (dotnet:type-align type-keyword))
-
-;;;# Foreign function calling
-
 ;;; The size of C `long' is OS-dependent: 32-bit on Windows (LLP64), 64-bit on
 ;;; Unix (LP64).  Because a dotcl fasl is reused across OSes, this MUST be a
 ;;; load-time runtime decision, never read-time #+windows.  These specials are
@@ -131,6 +113,33 @@ RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
 ;;; is correct on both Windows and Unix.
 (defparameter *c-long-dotcl-type*          (if (%dotcl-windows-p) :int32 :int64))
 (defparameter *c-unsigned-long-dotcl-type* (if (%dotcl-windows-p) :uint32 :uint64))
+
+;;; Older dotcl runtimes treat :long and :unsigned-long as 4 bytes on every OS,
+;;; so memory access and sizes go through the fixed-width keyword picked for the
+;;; running OS (*C-LONG-DOTCL-TYPE* above). That is also right on a runtime
+;;; that knows the C long size itself.
+(defun %dotcl-memory-type (type)
+  (case type
+    (:long          *c-long-dotcl-type*)
+    (:unsigned-long *c-unsigned-long-dotcl-type*)
+    (t              type)))
+
+(defun %mem-ref (ptr type &optional (offset 0))
+  (dotnet:mem-read (%dotcl-memory-type type) ptr offset))
+
+(defun %mem-set (value ptr type &optional (offset 0))
+  (dotnet:mem-write value (%dotcl-memory-type type) ptr offset)
+  value)
+
+;;;# Foreign type sizes and alignment
+
+(defun %foreign-type-size (type-keyword)
+  (dotnet:type-size (%dotcl-memory-type type-keyword)))
+
+(defun %foreign-type-alignment (type-keyword)
+  (dotnet:type-align (%dotcl-memory-type type-keyword)))
+
+;;;# Foreign function calling
 
 ;;; Map cffi type keywords to dotcl FFI type keywords.  :long / :unsigned-long
 ;;; return the load-time-resolved value (also correct if called directly), but
