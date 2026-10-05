@@ -78,30 +78,46 @@ RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
 ;;;# Shareable byte vectors
 
 (defun make-shareable-byte-vector (size)
-  (make-array size :element-type '(unsigned-byte 8)))
+  "Create a Lisp vector of SIZE bytes that can be passed to
+WITH-POINTER-TO-VECTOR-DATA. It is a pinned vector, so the pointer is to the
+vector's own storage: foreign writes show in it at once, and the address stays
+valid for as long as the vector lives."
+  (dotcl:make-pinned-vector size '(unsigned-byte 8)))
+
+(defun %pinned-vector-address (vector)
+  "The address of VECTOR's storage when it is a pinned vector, else NIL."
+  (handler-case (dotcl:pinned-vector-address vector)
+    (error () nil)))
 
 (defmacro with-pointer-to-vector-data ((ptr-var vector) &body body)
-  "Bind PTR-VAR to a pointer to VECTOR's data (copy-in/copy-out)."
-  (let ((vec (gensym "VEC")) (n (gensym "N")) (mem (gensym "MEM")))
-    `(let* ((,vec ,vector)
-            (,n (length ,vec))
-            (,mem (dotnet:alloc-mem ,n)))
-       (unwind-protect
-            (progn
-              (dotimes (i ,n)
-                (dotnet:mem-write (aref ,vec i) :unsigned-char ,mem i))
-              (let ((,ptr-var ,mem))
-                ,@body))
-         ;; The copy back belongs in the cleanup. An implementation that pins the
-         ;; vector makes every write to the pointer visible in it at once,
-         ;; including when the body leaves without returning normally, so
-         ;;   (with-pointer-to-vector-data (p v) (strcpy p "xpto") (return v))
-         ;; has to see the bytes. Copying only on the normal path left V zeroed.
-         ;; UNWIND-PROTECT hands back the protected form's values, so the body's
-         ;; values still come out without collecting them first.
-         (dotimes (i ,n)
-           (setf (aref ,vec i) (dotnet:mem-read :unsigned-char ,mem i)))
-         (dotnet:free-mem ,mem)))))
+  "Bind PTR-VAR to a pointer to VECTOR's data: the vector's own storage when
+it is pinned (MAKE-SHAREABLE-BYTE-VECTOR), else a copy that is written back
+when BODY is left."
+  (let ((vec (gensym "VEC")) (n (gensym "N")) (mem (gensym "MEM"))
+        (addr (gensym "ADDR")) (fn (gensym "BODY")))
+    `(flet ((,fn (,ptr-var) ,@body))
+       (declare (dynamic-extent #',fn))
+       (let* ((,vec ,vector)
+              (,addr (%pinned-vector-address ,vec)))
+         (if ,addr
+             (,fn ,addr)
+             (let* ((,n (length ,vec))
+                    (,mem (dotnet:alloc-mem ,n)))
+               (unwind-protect
+                    (progn
+                      (dotimes (i ,n)
+                        (dotnet:mem-write (aref ,vec i) :unsigned-char ,mem i))
+                      (,fn ,mem))
+                 ;; The copy back belongs in the cleanup. An implementation that pins the
+                 ;; vector makes every write to the pointer visible in it at once,
+                 ;; including when the body leaves without returning normally, so
+                 ;;   (with-pointer-to-vector-data (p v) (strcpy p "xpto") (return v))
+                 ;; has to see the bytes. Copying only on the normal path left V zeroed.
+                 ;; UNWIND-PROTECT hands back the protected form's values, so the body's
+                 ;; values still come out without collecting them first.
+                 (dotimes (i ,n)
+                   (setf (aref ,vec i) (dotnet:mem-read :unsigned-char ,mem i)))
+                 (dotnet:free-mem ,mem))))))))
 
 ;;;# Memory dereferencing
 
