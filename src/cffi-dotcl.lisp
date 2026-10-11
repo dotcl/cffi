@@ -86,8 +86,8 @@ valid for as long as the vector lives."
 
 (defun %pinned-vector-address (vector)
   "The address of VECTOR's storage when it is a pinned vector, else NIL."
-  (handler-case (dotcl:pinned-vector-address vector)
-    (error () nil)))
+  (when (dotcl:pinned-vector-p vector)
+    (dotcl:pinned-vector-address vector)))
 
 (defmacro with-pointer-to-vector-data ((ptr-var vector) &body body)
   "Bind PTR-VAR to a pointer to VECTOR's data: the vector's own storage when
