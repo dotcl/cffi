@@ -8,15 +8,12 @@
 
 ;;; Runtime OS probe.  dotcl fasls are OS-independent (one IL fasl is reused
 ;;; across environments differing in OS/CPU), so every OS decision here is made
-;;; at LOAD time by querying the running CLR -- never with read-time #+/#- --
-;;; exactly like trivial-features' tf-dotcl backend.
+;;; at LOAD time -- never with read-time #+/#-.  DOTCL:*HOST-FEATURES* holds
+;;; the features of the platform the process is running on, even while
+;;; *FEATURES* is rebound for another target.
 (defun %dotcl-windows-p ()
-  "True when the running CLR is on Windows, via
-RuntimeInformation.IsOSPlatform(OSPlatform.Windows)."
-  (dotnet:static "System.Runtime.InteropServices.RuntimeInformation"
-                 "IsOSPlatform"
-                 (dotnet:static "System.Runtime.InteropServices.OSPlatform"
-                                "get_Windows")))
+  "True when the running process is on Windows."
+  (and (member :windows dotcl:*host-features*) t))
 
 ;;; cffi-features consults :windows in *features*.  Push it only when actually
 ;;; on Windows, and independently of whether trivial-features has loaded yet.
