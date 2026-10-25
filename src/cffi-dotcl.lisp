@@ -230,6 +230,9 @@ MULTIPLE-VALUE-LIST of a void DEFCFUN came back (NIL) instead of ()."
     (values (nreverse types) (nreverse fargs) return-type)))
 
 ;;; Cache: function name -> address (integer). Avoids symbol lookup on every call.
+;;; Emptied whenever a library is loaded or closed: LOAD-FOREIGN-LIBRARY closes
+;;; the library before loading it again, and the new mapping need not be at the
+;;; old address.
 (defvar *%ffi-fn-cache* (make-hash-table :test #'equal))
 
 (defun %find-ffi-fn (name)
@@ -307,10 +310,12 @@ MULTIPLE-VALUE-LIST of a void DEFCFUN came back (NIL) instead of ()."
 (defun %load-foreign-library (name path)
   (declare (ignore name))
   (let ((path-str (if (stringp path) path (namestring path))))
+    (clrhash *%ffi-fn-cache*)
     (handler-case (dotnet:load-library path-str)
       (error (e) (error "~A" e)))))
 
 (defun %close-foreign-library (handle)
+  (clrhash *%ffi-fn-cache*)
   (dotnet:free-library handle))
 
 (defun native-namestring (pathname)
