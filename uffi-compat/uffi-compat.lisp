@@ -224,13 +224,22 @@ field-name"
              for cffi-type = (convert-uffi-type uffi-type)
              collect (list name cffi-type))))
 
+;; UFFI names a union and a struct alike, by the bare name; CFFI keeps them in
+;; separate namespaces, so pick the one TYPE is defined in.
+(defun %uffi-aggregate-type (type)
+  (if (and (symbolp type)
+           (gethash type cffi::*union-type-parsers*)
+           (not (gethash type cffi::*struct-type-parsers*)))
+      `(:union ,type)
+      `(:struct ,type)))
+
 ;; TODO: figure out why the compiler macro is kicking in before
 ;; the setf expander.
 (defun %foreign-slot-value (obj type field)
-  (cffi:foreign-slot-value obj `(:struct ,type) field))
+  (cffi:foreign-slot-value obj (%uffi-aggregate-type type) field))
 
 (defun (setf %foreign-slot-value) (value obj type field)
-  (setf (cffi:foreign-slot-value obj `(:struct ,type) field) value))
+  (setf (cffi:foreign-slot-value obj (%uffi-aggregate-type type) field) value))
 
 (defmacro get-slot-value (obj type field)
   "Access a slot value from a structure."
