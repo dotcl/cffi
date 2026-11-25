@@ -316,7 +316,7 @@ MULTIPLE-VALUE-LIST of a void DEFCFUN came back (NIL) instead of ()."
   (dotnet:free-library handle))
 
 (defun native-namestring (pathname)
-  (if (stringp pathname) pathname (namestring pathname)))
+  (if (stringp pathname) pathname (dotcl:native-namestring pathname)))
 
 ;;;# Foreign globals / symbol lookup
 
